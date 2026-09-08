@@ -1,0 +1,7 @@
+.DS_Store
+._*
+__pycache__/
+*.py[cod]
+model_weights/
+*_masks_SAM3/
+.env
