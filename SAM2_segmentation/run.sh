@@ -10,7 +10,7 @@
 #SBATCH --error=/usr/users/projets_p15_igr/chikri_ayo/stage_segmentation/logs/worker_%a.err
 
 # 4 workers en file d'attente partagée : chacun prend le prochain puits PGR non fait
-# (claim atomique), le traite (SAM3-AMG fp16 + propagation + focus gate), passe au suivant.
+# (claim atomique), le traite (SAM3-AMG + propagation), passe au suivant.
 # QOS = 4 jobs simultanés. Reprise sûre : resoumets ce script en boucle jusqu'à la fin.
 # .out/.err à nom fixe (worker_0..3) -> écrasés à chaque resoumission (avancement clair).
 
