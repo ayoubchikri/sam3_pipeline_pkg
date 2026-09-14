@@ -7,7 +7,11 @@ garde-fous [200,20000] + fallback stability), puis propagation vidéo native SAM
 Sortie = miroir de l'arborescence du dataset, SAUF que chaque dossier de PUITS
 (le dossier contenant les .tif) devient UN SEUL .npy :
     <...>/<puits>/                 (dossier de tifs, dans le dataset)
-    <...>/<puits>.npy              (1 npy = dict {nom_cavité: masques [n_frames,H,W]})
+    <...>/<puits>.npy              (1 npy = dict {nom_cavité: organoïde_bright_field [n_frames,H,W]})
+
+Le contenu n'est PAS le masque binaire mais l'organoïde en BRIGHT-FIELD sur fond
+noir (frame * masque : pixels originaux dans l'organoïde, 0 ailleurs) — le dataset
+final directement exploitable. Un .tif grille de contrôle (overlay rouge) est aussi écrit.
 
 Le masque initial sam3_amg est cherché sur la DERNIÈRE frame de chaque cavité
 (comme SAM2 avant), puis propagé en arrière sur toutes les frames.
@@ -39,7 +43,7 @@ from run import find_best_amg_mask                       # noqa: E402  (methods/
 
 MODEL_ID = "facebook/sam3"
 # dataset à segmenter (racine à parcourir) — modifie ici si besoin
-DATASET_ROOT = os.environ.get("DATASET_ROOT", "/CHEMIN/VERS/processed_files_ALL_frames")
+DATASET_ROOT = os.environ.get("DATASET_ROOT", "/path/to/processed_files_ALL_frames")
 
 
 # ----------------------------------------------------------------------------- I/O tif
@@ -54,15 +58,16 @@ def _to_uint8_gray(frame):
 
 def load_frames(tif_path):
     """Retourne (frames_rgb [liste de HxWx3 uint8], H, W).
-    Lecture via PIL (tifffile récent casse en numpy<2 : reshape(copy=...))."""
+    Lecture via tifffile (rapide, ~5x PIL) ; PIL en secours."""
     try:
-        from PIL import Image, ImageSequence
-        im = Image.open(tif_path)
-        arr = np.stack([np.asarray(p) for p in ImageSequence.Iterator(im)])
+        arr = np.asarray(tifffile.imread(tif_path))
     except Exception:
-        arr = tifffile.imread(tif_path)                    # secours
+        from PIL import Image, ImageSequence
+        arr = np.stack([np.asarray(p) for p in ImageSequence.Iterator(Image.open(tif_path))])
     if arr.ndim == 2:
         arr = arr[None]
+    elif arr.ndim == 4:                                     # (n, H, W, C) -> canal 0
+        arr = arr[..., 0]
     frames = []
     for f in arr:
         g = _to_uint8_gray(f)
@@ -171,22 +176,29 @@ def process_well(ctx, well_dir, out_npy, out_tif):
     tifs = sorted((p for p in Path(well_dir).iterdir()
                    if p.suffix.lower() in (".tif", ".tiff") and not p.name.startswith("._")),
                   key=lambda p: int(re.search(r"(\d+)\s*$", p.stem).group(1)) if re.search(r"(\d+)\s*$", p.stem) else 0)
-    masks, cells = {}, []
+    out_data, cells = {}, []
     for tif in tifs:
         try:
             frames, h, w = load_frames(tif)
-            stack = segment_cavity(ctx, frames, h, w)
-            masks[tif.stem] = stack
-            cells.append(([f[..., 0] for f in frames], stack, cavity_number(tif.stem)))
+            stack = segment_cavity(ctx, frames, h, w)              # masque booléen [n,H,W]
+            gray = [f[..., 0] for f in frames]                     # bright-field (niveaux de gris)
+            # dataset final = organoïde en bright-field sur fond noir (frame * masque)
+            n = min(len(gray), stack.shape[0])
+            bf = np.zeros((n, h, w), dtype=gray[0].dtype)
+            for t in range(n):
+                if stack[t].any():
+                    bf[t][stack[t]] = gray[t][stack[t]]
+            out_data[tif.stem] = bf
+            cells.append((gray, stack, cavity_number(tif.stem)))   # grille de contrôle = overlay rouge
         except Exception as e:
             import traceback
             print(f"    [{tif.name}] ERREUR: {e}", flush=True)
             traceback.print_exc()
-            masks[tif.stem] = None
+            out_data[tif.stem] = None
     out_npy.parent.mkdir(parents=True, exist_ok=True)
-    np.save(out_npy, np.array(masks, dtype=object), allow_pickle=True)
+    np.save(out_npy, np.array(out_data, dtype=object), allow_pickle=True)
     make_grid_tif(cells, out_tif)
-    print(f"  -> {out_npy.name} + {out_tif.name}  ({len(masks)} cavités)", flush=True)
+    print(f"  -> {out_npy.name} + {out_tif.name}  ({len(out_data)} cavités)", flush=True)
 
 
 def _patient_id(well, root_in):
@@ -302,7 +314,7 @@ def main():
     a = ap.parse_args()
     if not os.path.isdir(DATASET_ROOT):
         print(f"ERREUR: dossier introuvable: {DATASET_ROOT}"); sys.exit(1)
-    root_out = str(HERE.parent / f"{Path(DATASET_ROOT).name}_masks_SAM3")
+    root_out = str(HERE.parent / f"{Path(DATASET_ROOT).name}_brightfield_SAM3")
 
     if a.queue:                                            # file d'attente : chaque worker prend le prochain puits
         print(f"[dataset] {DATASET_ROOT}\n[sortie]  {root_out}\n[filtre]  {a.only or 'tous'}"

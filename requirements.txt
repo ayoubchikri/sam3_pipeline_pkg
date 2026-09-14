@@ -1,14 +1,14 @@
-# Env de référence : conda "bench312", Python 3.12.
-# 1) Installer d'abord PyTorch adapté à votre CUDA : https://pytorch.org
-#    (ex. GPU CUDA 12.x :  pip install torch --index-url https://download.pytorch.org/whl/cu121)
-# 2) Puis :
+# Env principal "sam3" (pour run_segmentation.py + benchmark des méthodes sam3_*).
+# Installer d'abord PyTorch adapté à votre CUDA : https://pytorch.org
 transformers==5.15.0
 huggingface_hub
 accelerate
-numpy==1.26.4          # IMPORTANT : numpy < 2 (bug tifffile reshape sur numpy>=2)
+numpy>=2.0             # requis pour la lecture rapide via tifffile (reshape(copy=) ;
+                       # sinon le code retombe sur PIL, ~5x plus lent)
 opencv-python
 tifffile
 scikit-image
 scipy
 pillow
 tqdm
+matplotlib            # figures du benchmark

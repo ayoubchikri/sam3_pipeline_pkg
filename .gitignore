@@ -1,7 +1,36 @@
+# poids / caches modèles
+model_weights/
+repo_sam2/
+OrganoID/
+*.safetensors
+*.pt
+*.bin
+
+# données & sorties
+*_masks_SAM3/
+*_brightfield_SAM3/
+processed_files_*/
+benchmarks/well_pairs/
+benchmarks/annotations/
+benchmarks/bench_tifs/
+benchmarks/results*/
+data/
+*.tif
+*.npy
+*.npz
+
+# logs & jobs
+logs/
+*.out
+*.err
+_claims/
+
+# python / os
+__pycache__/
+*.pyc
+.venv/
+venv/
 .DS_Store
 ._*
-__pycache__/
-*.py[cod]
-model_weights/
-*_masks_SAM3/
-.env
+.idea/
+.vscode/

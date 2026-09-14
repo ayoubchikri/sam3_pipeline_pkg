@@ -8,31 +8,22 @@ use this same point to *select* which output object is "the organoid".
 Only needs numpy + opencv, so it imports cleanly in every method's conda env.
 """
 
-import sys
-from pathlib import Path
 import numpy as np
 import cv2
 
-# Use the CANONICAL well detector from the main pipeline (single source of truth).
-# It only needs cv2/numpy, but it lives in a module that imports torch/sam2 at the
-# top — so in envs without SAM2 (e.g. cellpose_env) we fall back to an identical copy.
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(PROJECT_ROOT))
-try:
-    from sam2_segmentation_save_roi import _detect_well as detect_well  # canonical
-except Exception:
-    def detect_well(frame_gray):
-        """Fallback identical to sam2_segmentation_save_roi._detect_well (SAM2 not importable here)."""
-        h, w = frame_gray.shape
-        blurred = cv2.GaussianBlur(frame_gray, (9, 9), 2)
-        circles = cv2.HoughCircles(blurred, cv2.HOUGH_GRADIENT, dp=1.2,
-                                    minDist=min(h, w) // 2, param1=80, param2=30,
-                                    minRadius=int(min(h, w) * 0.3),
-                                    maxRadius=int(min(h, w) * 0.6))
-        if circles is not None:
-            cx, cy, r = np.round(circles[0][0]).astype(int)
-            return int(cx), int(cy), int(r)
-        return w // 2, h // 2, int(min(h, w) * 0.4)
+
+def detect_well(frame_gray):
+    """Detect the well disc (cx, cy, r) by Hough circle; fall back to a centred disc."""
+    h, w = frame_gray.shape
+    blurred = cv2.GaussianBlur(frame_gray, (9, 9), 2)
+    circles = cv2.HoughCircles(blurred, cv2.HOUGH_GRADIENT, dp=1.2,
+                               minDist=min(h, w) // 2, param1=80, param2=30,
+                               minRadius=int(min(h, w) * 0.3),
+                               maxRadius=int(min(h, w) * 0.6))
+    if circles is not None:
+        cx, cy, r = np.round(circles[0][0]).astype(int)
+        return int(cx), int(cy), int(r)
+    return w // 2, h // 2, int(min(h, w) * 0.4)
 
 
 def well_mask(frame_gray, margin=1.0):
